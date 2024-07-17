@@ -20,11 +20,7 @@ constexpr bool bUseValidationLayers = true;
 
 void VulkanEngine::init()
 {
-    // only one engine initialization is allowed with the application.
-    assert(loadedEngine == nullptr);
-    loadedEngine = this;
-
-    // We initialize SDL and create a window with it.
+    // We initialize SDL and create a window with it. 
     SDL_Init(SDL_INIT_VIDEO);
 
     SDL_WindowFlags window_flags = (SDL_WindowFlags)(SDL_WINDOW_VULKAN);
@@ -35,7 +31,9 @@ void VulkanEngine::init()
         SDL_WINDOWPOS_UNDEFINED,
         _windowExtent.width,
         _windowExtent.height,
-        window_flags);
+        window_flags
+    );
+
     init_vulkan();
 
     init_swapchain();
@@ -44,7 +42,7 @@ void VulkanEngine::init()
 
     init_sync_structures();
 
-    // everything went fine
+    //everything went fine
     _isInitialized = true;
 }
 
@@ -52,7 +50,8 @@ void VulkanEngine::init_vulkan()
 {
     vkb::InstanceBuilder builder;
 
-    auto inst_ret = builder.set_app_name("Example Vulkan Application")
+    // make the vulkan instance, with basic debug features
+    auto inst_ret = builder.set_app_name("Vulkan Rendering Engine")
         .request_validation_layers(bUseValidationLayers)
         .use_default_debug_messenger()
         .require_api_version(1, 3, 0)
@@ -60,6 +59,7 @@ void VulkanEngine::init_vulkan()
 
     vkb::Instance vkb_inst = inst_ret.value();
 
+    //grab the instance
     _instance = vkb_inst.instance;
     _debug_messenger = vkb_inst.debug_messenger;
 
@@ -75,8 +75,8 @@ void VulkanEngine::init_vulkan()
     features12.bufferDeviceAddress = true;
     features12.descriptorIndexing = true;
 
-    //use vkbootstrap to select a gpu. 
-    //We want a gpu that can write to the SDL surface and supports vulkan 1.3 with the correct features
+    //use vkbootstrap to select a GPU
+    //we want a GPU that can write to the SDL surface and supports vulkan 1.3 with the correct features
     vkb::PhysicalDeviceSelector selector{ vkb_inst };
     vkb::PhysicalDevice physicalDevice = selector
         .set_minimum_version(1, 3)
@@ -91,18 +91,18 @@ void VulkanEngine::init_vulkan()
 
     vkb::Device vkbDevice = deviceBuilder.build().value();
 
-    // Get the VkDevice handle used in the rest of a vulkan application
+    //Get the VkDevice handle used in the rest of a vulkan application
     _device = vkbDevice.device;
     _chosenGPU = physicalDevice.physical_device;
 
+    // use vkbootstrap to get a Graphics queue
     _graphicsQueue = vkbDevice.get_queue(vkb::QueueType::graphics).value();
     _graphicsQueueFamily = vkbDevice.get_queue_index(vkb::QueueType::graphics).value();
-
 }
 
 void VulkanEngine::create_swapchain(uint32_t width, uint32_t height)
 {
-    vkb::SwapchainBuilder swapchainBuilder{ _chosenGPU,_device,_surface };
+    vkb::SwapchainBuilder swapchainBuilder{ _chosenGPU, _device, _surface };
 
     _swapchainImageFormat = VK_FORMAT_B8G8R8A8_UNORM;
 
@@ -132,15 +132,16 @@ void VulkanEngine::destroy_swapchain()
 {
     vkDestroySwapchainKHR(_device, _swapchain, nullptr);
 
-    // destroy swapchain resources
-    for (int i = 0; i < _swapchainImageViews.size(); i++) 
+    //destroy swapchain resources
+    for (int i = 0; i < _swapchainImageViews.size(); i++)
     {
-
         vkDestroyImageView(_device, _swapchainImageViews[i], nullptr);
     }
 }
 void VulkanEngine::init_commands()
 {
+    //create a command pool for commands submitted to the graphics queue
+    //we also want the pool to allow for resetting of individual command buffers
     VkCommandPoolCreateInfo commandPoolInfo = vkinit::command_pool_create_info(_graphicsQueueFamily, VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 
     for (int i = 0; i < FRAME_OVERLAP; i++)
@@ -150,18 +151,23 @@ void VulkanEngine::init_commands()
         VkCommandBufferAllocateInfo cmdAllocInfo = vkinit::command_buffer_allocate_info(_frames[i]._commandPool, 1);
 
         VK_CHECK(vkAllocateCommandBuffers(_device, &cmdAllocInfo, &_frames[i]._mainCommandBuffer));
+        
     }
 }
 
 void VulkanEngine::init_sync_structures()
 {
+    //create synchronization structures
+    //one fence to control when the GPU has finished rendering the frame,
+    //and 2 semaphores to synchronize rendering with swapchain
+    //we want the fence to start signalled so we can wait on it the first frame
     VkFenceCreateInfo fenceCreateInfo = vkinit::fence_create_info(VK_FENCE_CREATE_SIGNALED_BIT);
     VkSemaphoreCreateInfo semaphoreCreateInfo = vkinit::semaphore_create_info();
 
     for (int i = 0; i < FRAME_OVERLAP; i++)
     {
         VK_CHECK(vkCreateFence(_device, &fenceCreateInfo, nullptr, &_frames[i]._renderFence));
-        
+
         VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_frames[i]._swapchainSemaphore));
         VK_CHECK(vkCreateSemaphore(_device, &semaphoreCreateInfo, nullptr, &_frames[i]._renderSemaphore));
     }
@@ -169,26 +175,29 @@ void VulkanEngine::init_sync_structures()
 
 void VulkanEngine::cleanup()
 {
-    if (_isInitialized) 
+    if (_isInitialized)
     {
         vkDeviceWaitIdle(_device);
 
         for (int i = 0; i < FRAME_OVERLAP; i++)
         {
             vkDestroyCommandPool(_device, _frames[i]._commandPool, nullptr);
+
+            //destroy sync objects
+            vkDestroyFence(_device, _frames[i]._renderFence, nullptr);
+            vkDestroySemaphore(_device, _frames[i]._renderSemaphore, nullptr);
+            vkDestroySemaphore(_device, _frames[i]._swapchainSemaphore, nullptr);
         }
+
         destroy_swapchain();
 
         vkDestroySurfaceKHR(_instance, _surface, nullptr);
         vkDestroyDevice(_device, nullptr);
-
+        
         vkb::destroy_debug_utils_messenger(_instance, _debug_messenger);
         vkDestroyInstance(_instance, nullptr);
         SDL_DestroyWindow(_window);
     }
-
-    // clear engine pointer
-    loadedEngine = nullptr;
 }
 
 void VulkanEngine::draw()
@@ -196,15 +205,21 @@ void VulkanEngine::draw()
     VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._renderFence, true, 1000000000));
     VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._renderFence));
 
+    //request image from the swapchain
     uint32_t swapchainImageIndex;
     VK_CHECK(vkAcquireNextImageKHR(_device, _swapchain, 1000000000, get_current_frame()._swapchainSemaphore, nullptr, &swapchainImageIndex));
 
+    //naming it cmd for shorter writing
     VkCommandBuffer cmd = get_current_frame()._mainCommandBuffer;
 
+    // now that we are sure that the commands finished executing, we can safely
+    // reset the command buffer to begin recording again.
     VK_CHECK(vkResetCommandBuffer(cmd, 0));
 
+    //begin the command buffer recording. We will use this command buffer exactly once, so we want to let vulkan know that
     VkCommandBufferBeginInfo cmdBeginInfo = vkinit::command_buffer_begin_info(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-    
+
+    //start the command buffer recording
     VK_CHECK(vkBeginCommandBuffer(cmd, &cmdBeginInfo));
 
     //make the swapchain image into writeable mode before rendering
@@ -261,17 +276,6 @@ void VulkanEngine::draw()
     //increase the number of frames drawn
     _frameNumber++;
 
-    for (int i = 0; i < FRAME_OVERLAP; i++) 
-    {
-
-        //already written from before
-        vkDestroyCommandPool(_device, _frames[i]._commandPool, nullptr);
-
-        //destroy sync objects
-        vkDestroyFence(_device, _frames[i]._renderFence, nullptr);
-        vkDestroySemaphore(_device, _frames[i]._renderSemaphore, nullptr);
-        vkDestroySemaphore(_device, _frames[i]._swapchainSemaphore, nullptr);
-    }
 }
 
 void VulkanEngine::run()
@@ -280,18 +284,23 @@ void VulkanEngine::run()
     bool bQuit = false;
 
     // main loop
-    while (!bQuit) {
+    while (!bQuit) 
+    {
         // Handle events on queue
-        while (SDL_PollEvent(&e) != 0) {
+        while (SDL_PollEvent(&e) != 0) 
+        {
             // close the window when user alt-f4s or clicks the X button
             if (e.type == SDL_QUIT)
                 bQuit = true;
 
-            if (e.type == SDL_WINDOWEVENT) {
-                if (e.window.event == SDL_WINDOWEVENT_MINIMIZED) {
+            if (e.type == SDL_WINDOWEVENT) 
+            {
+                if (e.window.event == SDL_WINDOWEVENT_MINIMIZED) 
+                {
                     stop_rendering = true;
                 }
-                if (e.window.event == SDL_WINDOWEVENT_RESTORED) {
+                if (e.window.event == SDL_WINDOWEVENT_RESTORED) 
+                {
                     stop_rendering = false;
                 }
             }
