@@ -30,6 +30,7 @@
         }                                                               \
     } while (0)
 
+
 struct AllocatedImage {
     VkImage image;
     VkImageView imageView;
@@ -69,3 +70,12 @@ struct GPUDrawPushConstants
     VkDeviceAddress vertexBuffer;
 };
 
+struct GPUSceneData
+{
+    glm::mat4 view;
+    glm::mat4 proj;
+    glm::mat4 viewproj;
+    glm::vec4 ambientColor;
+    glm::vec4 sunlightDirection;
+    glm::vec4 sunlightColor;
+};
